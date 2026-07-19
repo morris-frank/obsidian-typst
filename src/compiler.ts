@@ -139,9 +139,41 @@ async function ensureDir(dir: string): Promise<void> {
 }
 
 /**
+ * Rewrite bare imports of the configured template to a root-relative absolute
+ * path pointing at its real location, so a `.typ` file can `#import
+ * "soilytix-document.typ"` from anywhere without the template sitting next to
+ * it. Only imports whose basename matches the resolved template file are
+ * touched; every other import is left alone. The template's own asset paths
+ * (logo, patterns) resolve relative to its real location, so they keep working.
+ */
+export function rewriteTemplateImports(
+  source: string,
+  templateFile: string,
+  root: string,
+): { source: string; changed: boolean } {
+  const templateBase = path.basename(templateFile);
+  const rootRel = rootRelativeImport(root, templateFile);
+  let changed = false;
+  const rewritten = source.replace(
+    /(#(?:import|include)\s+)"([^"]+)"/g,
+    (whole, keyword: string, importPath: string) => {
+      if (path.basename(importPath) !== templateBase) return whole;
+      if (importPath === rootRel) return whole;
+      changed = true;
+      return `${keyword}"${rootRel}"`;
+    },
+  );
+  return { source: rewritten, changed };
+}
+
+/**
  * Compile a `.typ` file directly to PDF. Returns the output path.
- * `root` defaults to the common ancestor of the source and the template dir
- * so files may import the configured template even from elsewhere on disk.
+ *
+ * If the file imports the configured template by a bare/mismatched path, that
+ * import is rewritten to the template's real location and the compile runs from
+ * a temporary sibling file (so the original's other relative paths still
+ * resolve). `--root` is the common ancestor of the source and the template so
+ * the root-relative import is expressible.
  */
 export async function compileTyp(
   sourceAbs: string,
@@ -149,22 +181,50 @@ export async function compileTyp(
   settings: TypstPluginSettings,
 ): Promise<string> {
   await ensureDir(path.dirname(outPdfAbs));
-  const roots = [sourceAbs];
+
+  let templateFile: string | null = null;
   if (settings.templatePath) {
     try {
-      roots.push(await resolveTemplateFile(settings.templatePath));
+      templateFile = await resolveTemplateFile(settings.templatePath);
     } catch {
       // Template optional for direct .typ compiles; ignore if unresolved.
     }
   }
+
+  const roots = templateFile ? [sourceAbs, templateFile] : [sourceAbs];
   const root = commonAncestor(roots);
-  const res = await run(
-    settings.typstPath,
-    ["compile", "--root", root, sourceAbs, outPdfAbs],
-    { cwd: path.dirname(sourceAbs) },
-  );
-  if (res.code !== 0) {
-    throw new CompileError(res.stderr.trim() || "typst compile failed.");
+
+  let compileTarget = sourceAbs;
+  let tmpTyp: string | null = null;
+
+  if (templateFile) {
+    const original = await fs.readFile(sourceAbs, "utf8");
+    const { source, changed } = rewriteTemplateImports(
+      original,
+      templateFile,
+      root,
+    );
+    if (changed) {
+      tmpTyp = path.join(
+        path.dirname(sourceAbs),
+        `.${path.basename(sourceAbs, ".typ")}.typst-compile.typ`,
+      );
+      await fs.writeFile(tmpTyp, source, "utf8");
+      compileTarget = tmpTyp;
+    }
+  }
+
+  try {
+    const res = await run(
+      settings.typstPath,
+      ["compile", "--root", root, compileTarget, outPdfAbs],
+      { cwd: path.dirname(sourceAbs) },
+    );
+    if (res.code !== 0) {
+      throw new CompileError(res.stderr.trim() || "typst compile failed.");
+    }
+  } finally {
+    if (tmpTyp) await fs.rm(tmpTyp, { force: true });
   }
   return outPdfAbs;
 }
