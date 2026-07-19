@@ -1,0 +1,40 @@
+{
+  "name": "obsidian-typst",
+  "version": "0.1.0",
+  "description": "Obsidian plugin to view/compile Typst files and export Markdown to PDF via Typst.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "lint": "eslint src",
+    "fmt": "prettier --write \"src/**/*.ts\" \"*.{json,mjs,md}\"",
+    "fmt:check": "prettier --check \"src/**/*.ts\" \"*.{json,mjs,md}\""
+  },
+  "keywords": [
+    "obsidian",
+    "typst",
+    "pdf"
+  ],
+  "author": "Morris Frank",
+  "license": "MIT",
+  "packageManager": "pnpm@10.0.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.0.0",
+    "obsidian": "^1.7.2",
+    "prettier": "^3.3.0",
+    "tslib": "^2.7.0",
+    "typescript": "^5.6.0"
+  }
+}

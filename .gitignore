@@ -1,0 +1,17 @@
+# Build output (bundled plugin artifact — rebuilt from src/)
+main.js
+main.js.map
+
+# Dependencies
+node_modules/
+
+# Env / secrets
+.env
+.env.local
+
+# Tool caches
+.mise/
+*.tsbuildinfo
+
+# OS
+.DS_Store

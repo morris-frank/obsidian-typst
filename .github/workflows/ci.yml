@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Installs the exact toolchain from mise.toml/mise.lock — same as local.
+      - uses: jdx/mise-action@v2
+        with:
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      # The prek hooks ARE the lint/format/typecheck gate — one definition.
+      - run: prek run --all-files --show-diff-on-failure
+      - run: pnpm run build
+      - run: gitleaks dir . --redact --verbose # backstop to the commit hook
+      - run: mise run audit # dependency vulns vs the lock

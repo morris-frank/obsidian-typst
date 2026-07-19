@@ -1,0 +1,76 @@
+# mise is the single source of truth for the toolchain.
+# Exact resolved versions are recorded in mise.lock (committed).
+min_version = "2026.6.1"
+
+[settings]
+lockfile = true
+
+[tools]
+node = "26"
+pnpm = "10"
+# Runtime dependencies of the plugin (documented here so a dev machine has them,
+# but the plugin discovers them at runtime via the paths in its settings).
+typst = "latest"     # pre-1.0; expect churn
+pandoc = "latest"
+prek = "latest"      # fast Rust drop-in for pre-commit
+gitleaks = "latest"  # secret scanning
+"aqua:google/osv-scanner" = "latest"  # dependency vulnerability scan
+
+[env]
+_.file = [".env", ".env.local"]
+
+[tasks.setup]
+description = "Cold start: install toolchain, deps, and git hooks, then verify"
+run = [
+  "mise install",
+  "pnpm install --frozen-lockfile",
+  "prek install && prek install -t pre-push",
+  "mise run check",
+]
+
+[tasks.install]
+description = "Install deps + git hooks (no verify)"
+run = [
+  "pnpm install --frozen-lockfile",
+  "prek install && prek install -t pre-push",
+]
+
+[tasks.dev]
+description = "Watch-build the plugin bundle"
+run = "pnpm run dev"
+
+[tasks.build]
+description = "Type-check and produce the production main.js bundle"
+run = "pnpm run build"
+
+[tasks.lint]
+run = "pnpm run lint"
+
+[tasks.fmt]
+run = "pnpm run fmt"
+
+[tasks."fmt:check"]
+run = "pnpm run fmt:check"
+
+[tasks.typecheck]
+run = "pnpm run typecheck"
+
+[tasks.check]
+description = "Everything CI runs: format-check, lint, type-check, build"
+run = [
+  "pnpm run fmt:check",
+  "pnpm run lint",
+  "pnpm run typecheck",
+  "pnpm run build",
+]
+
+[tasks.hooks]
+run = "prek run --all-files"
+
+[tasks.secrets]
+description = "Scan the working tree for committed secrets"
+run = "gitleaks dir . --redact --verbose"
+
+[tasks.audit]
+description = "Scan dependencies for known vulnerabilities (reads pnpm-lock.yaml)"
+run = "osv-scanner scan --lockfile pnpm-lock.yaml"
