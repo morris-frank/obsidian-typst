@@ -127,7 +127,9 @@ function buildTemplateArgs(
     const rows = meta
       .map(([k, v]) => `(${typstStringLiteral(k)}, ${typstStringLiteral(v)})`)
       .join(", ");
-    parts.push(`meta: (${rows})`);
+    // Trailing comma is required: `(("Date", "x"))` is not a nested array in
+    // Typst, it collapses to `("Date", "x")` and the template reads characters.
+    parts.push(`meta: (${rows},)`);
   }
 
   if (extraArgs.trim()) parts.push(extraArgs.trim().replace(/,\s*$/, ""));
