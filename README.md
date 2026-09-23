@@ -1,7 +1,20 @@
-# Obsidian Typst
+<img src="brand/icon/icon-obsidian-typst-on-obsidian-512.png" align="left" width="128" hspace="16" alt="Obsidian Typst icon">
 
-An Obsidian plugin for working with [Typst](https://typst.app) from inside your
-vault:
+<h3>Obsidian Typst</h3>
+
+<p>
+  <sub>TYPST INSIDE YOUR VAULT</sub>
+  <br>
+  <strong>Preview and compile <code>.typ</code> files, and export Markdown notes to PDF through a Typst template.</strong>
+  <br>
+  <br>
+  <a href="https://obsidian.md"><img src="https://img.shields.io/badge/Obsidian-plugin-8EDE3D?style=flat-square&amp;labelColor=16211B" alt="Obsidian plugin"></a>
+  <a href="https://typst.app"><img src="https://img.shields.io/badge/Typst-compile-8EDE3D?style=flat-square&amp;labelColor=16211B" alt="Typst"></a>
+  <img src="https://img.shields.io/badge/Markdown%20%E2%86%92%20PDF-pandoc-1AB172?style=flat-square&amp;labelColor=16211B" alt="Markdown to PDF via pandoc">
+  <img src="https://img.shields.io/badge/platform-desktop%20only-EE7931?style=flat-square&amp;labelColor=16211B" alt="Desktop only">
+</p>
+
+<br clear="left">
 
 - **View and compile `.typ` files** in a split editor — source on the left, a
   live PDF preview on the right. Hit _Compile_ (or `Cmd/Ctrl+S`) to render.
