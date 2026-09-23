@@ -1,4 +1,4 @@
-# Working agreement — obsidian-typst
+# Working agreement — typst-studio
 
 An Obsidian plugin (desktop-only) to view/compile Typst files and export
 Markdown to PDF through Typst.

@@ -6,7 +6,7 @@ const production = process.argv[2] === "production";
 
 const banner = `/*
 This file is bundled by esbuild from src/. Do not edit directly.
-See the source at https://github.com/morris-frank/obsidian-typst
+See the source at https://github.com/morris-frank/typst-studio
 */`;
 
 const ctx = await esbuild.context({
