@@ -106,6 +106,7 @@ function typstContent(value: string): string {
 function buildTemplateArgs(
   frontmatter: Record<string, unknown>,
   extraArgs: string,
+  defaultAuthor: string,
 ): string {
   const parts: string[] = [];
   const fm = frontmatter ?? {};
@@ -120,7 +121,8 @@ function buildTemplateArgs(
   if (eyebrow) parts.push(`eyebrow: ${typstStringLiteral(eyebrow)}`);
 
   const meta: Array<[string, string]> = [];
-  if (fm.author) meta.push(["Author", String(fm.author)]);
+  const author = fm.author ?? defaultAuthor;
+  if (author) meta.push(["Author", String(author)]);
   if (fm.date) meta.push(["Date", String(fm.date)]);
   if (fm.version) meta.push(["Version", String(fm.version)]);
   if (meta.length) {
@@ -134,6 +136,265 @@ function buildTemplateArgs(
 
   if (extraArgs.trim()) parts.push(extraArgs.trim().replace(/,\s*$/, ""));
   return parts.join(",\n  ");
+}
+
+/** Escape a value for use as Markdown link text. */
+function markdownLinkText(value: string): string {
+  return value.replace(/([\\\[\]])/g, "\\$1");
+}
+
+/**
+ * Rewrite Obsidian wiki links (`[[note]]`, `[[note|alias]]`, `[[note#heading]]`,
+ * `![[note]]`) into Markdown links on an `obsidian://open` URL, so a reference
+ * in the PDF is clickable and lands on the note it cites. Without this, pandoc
+ * escapes the brackets and the reader gets `\[\[people/Julia Jehn\]\]`.
+ */
+export function rewriteWikiLinks(markdown: string, vaultName: string): string {
+  return markdown.replace(
+    /!?\[\[([^\]|#\n]+?)(?:#([^\]|\n]*))?(?:\|([^\]\n]*))?\]\]/g,
+    (_whole, target: string, anchor: string | undefined, alias) => {
+      const file = target.trim().replace(/\.md$/i, "");
+      const heading = anchor?.trim();
+      const label =
+        (alias as string | undefined)?.trim() || file.split("/").pop() || file;
+      const query =
+        `vault=${encodeURIComponent(vaultName)}` +
+        `&file=${encodeURIComponent(file + (heading ? `#${heading}` : ""))}`;
+      return `[${markdownLinkText(label)}](obsidian://open?${query})`;
+    },
+  );
+}
+
+const CALLOUT_HEAD = /^([ \t]*)>[ \t]*\[!([A-Za-z][\w-]*)\][+-]?[ \t]*(.*)$/;
+
+/**
+ * Rewrite Obsidian callouts (`> [!warning] Title`) into a raw-Typst
+ * `#admonition(...)` wrapper around the still-Markdown body, so the body keeps
+ * its bold, links and lists while the box itself is branded. pandoc passes
+ * ```{=typst}``` fences through verbatim.
+ */
+export function rewriteCallouts(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = CALLOUT_HEAD.exec(lines[i]);
+    if (!head) {
+      out.push(lines[i]);
+      continue;
+    }
+    // The indent is kept on every emitted line so a callout nested inside a
+    // list item stays inside it.
+    const [, indent, kind, title] = head;
+    const body: string[] = [];
+    while (
+      i + 1 < lines.length &&
+      new RegExp(`^${indent}>`).test(lines[i + 1])
+    ) {
+      body.push(lines[++i].slice(indent.length).replace(/^>[ \t]?/, ""));
+    }
+    const titleArg = title.trim()
+      ? `, title: [${typstContent(title.trim())}]`
+      : "";
+    out.push(
+      ...[
+        "```{=typst}",
+        `#admonition(${typstStringLiteral(kind.toLowerCase())}${titleArg})[`,
+        "```",
+        "",
+        ...body,
+        "",
+        "```{=typst}",
+        "]",
+        "```",
+        "",
+      ].map((l) => (l ? indent + l : l)),
+    );
+  }
+  return out.join("\n");
+}
+
+// pandoc emits the task-list checkbox either as the literal glyph or, since
+// 3.11, as a Typst unicode escape (`\u{2610}` / `\u{2612}`). Match both, or a
+// pandoc upgrade silently turns every task list back into dashes and boxes.
+const TASK_MARK = String.raw`(?:[\u2610\u2612]|\\u\{261[02]\})`;
+const TASK_BLOCK = new RegExp(
+  String.raw`^(?:[ \t]*- ${TASK_MARK}[^\n]*\n(?:[ \t]+\S[^\n]*\n)*)+`,
+  "gm",
+);
+
+/**
+ * Route pandoc's non-default enum numbering (`A.`, `i.`, …) through the
+ * template's `styled-enum-numbering`, so a lettered list keeps the accent
+ * marker that plain `1.` lists get from the template's own `set enum`.
+ */
+export function styleEnumNumbering(typstSource: string): string {
+  return typstSource.replace(
+    /(#set enum\(numbering: )("(?:[^"\\]|\\.)*")/g,
+    (_whole, head: string, pattern: string) =>
+      `${head}styled-enum-numbering(${pattern})`,
+  );
+}
+
+/**
+ * Wrap pandoc's task-list output in `#task-list[...]`. pandoc renders
+ * `- [ ]` as a plain bullet whose body starts with `☐`, which would print as
+ * a dash followed by a box; the template's `task-list` drops the dash and
+ * turns the glyph into a branded checkbox.
+ */
+export function wrapTaskLists(typstSource: string): string {
+  return typstSource.replace(TASK_BLOCK, (block) => `#task-list[\n${block}]\n`);
+}
+
+/**
+ * Mermaid's own defaults are its brand, not ours, so every diagram is rendered
+ * against the design system: Lime-washed nodes with a deep-green border, Gold
+ * for the second family, the neutral ramp for structure, Inter throughout.
+ *
+ * `htmlLabels: false` is not cosmetic — mermaid otherwise puts every node label
+ * in an SVG `<foreignObject>`, which Typst cannot render, and the diagram
+ * arrives in the PDF as a set of empty boxes.
+ */
+const MERMAID_CONFIG = {
+  htmlLabels: false,
+  theme: "base",
+  themeVariables: {
+    fontFamily: "Inter",
+    fontSize: "14px",
+    background: "#FFFFFF",
+    mainBkg: "#EDFCDE",
+    primaryColor: "#EDFCDE",
+    primaryBorderColor: "#779E29",
+    primaryTextColor: "#29332E",
+    secondaryColor: "#F4ECE2",
+    secondaryBorderColor: "#B48240",
+    secondaryTextColor: "#29332E",
+    tertiaryColor: "#F5F6F6",
+    tertiaryBorderColor: "#CED0CF",
+    tertiaryTextColor: "#29332E",
+    nodeBorder: "#779E29",
+    lineColor: "#6D7471",
+    textColor: "#29332E",
+    titleColor: "#29332E",
+    clusterBkg: "#F5F6F6",
+    clusterBorder: "#CED0CF",
+    edgeLabelBackground: "#FFFFFF",
+  },
+  // Tighter spacing is not cosmetic either: it lifts the ratio of label size
+  // to total diagram width, which is what decides whether the text is still
+  // readable once the SVG is scaled down to the page measure.
+  flowchart: {
+    htmlLabels: false,
+    curve: "basis",
+    useMaxWidth: true,
+    nodeSpacing: 30,
+    rankSpacing: 45,
+  },
+  sequence: { useMaxWidth: true },
+  gantt: { useMaxWidth: true },
+};
+
+const MERMAID_FENCE =
+  /^([ \t]*)```+[ \t]*mermaid[ \t]*\n([\s\S]*?)^\1```+[ \t]*$/gm;
+
+export interface MermaidResult {
+  /** The markdown with each rendered fence replaced by a raw-Typst image. */
+  markdown: string;
+  /** Temporary files to delete once the compile is done. */
+  artifacts: string[];
+  /** Fences that could not be rendered, left in place as code blocks. */
+  failures: string[];
+}
+
+/**
+ * Render every ```mermaid fence to an SVG beside the source and replace it
+ * with a raw-Typst `#image(...)`. The SVGs must live under the compile root
+ * for Typst to read them, which is why they land next to the note rather than
+ * in a temp directory; they are cleaned up with the wrapper.
+ *
+ * A missing or failing `mmdc` is not fatal: that fence stays a code block and
+ * the caller is told, because a diagram that did not render is worth a warning
+ * and not worth losing the whole export over.
+ */
+export async function renderMermaid(
+  markdown: string,
+  sourceAbs: string,
+  settings: TypstPluginSettings,
+): Promise<MermaidResult> {
+  const artifacts: string[] = [];
+  const failures: string[] = [];
+  const blocks: Array<{ whole: string; indent: string; code: string }> = [];
+  for (const m of markdown.matchAll(MERMAID_FENCE))
+    blocks.push({ whole: m[0], indent: m[1], code: m[2] });
+  if (blocks.length === 0 || !settings.mermaidPath.trim())
+    return { markdown, artifacts, failures };
+
+  const dir = path.dirname(sourceAbs);
+  const stem = `.${path.basename(sourceAbs, path.extname(sourceAbs))}.mermaid`;
+  const cfgFile = path.join(dir, `${stem}.config.json`);
+  await fs.writeFile(cfgFile, JSON.stringify(MERMAID_CONFIG), "utf8");
+  artifacts.push(cfgFile);
+
+  let ppFile: string | null = null;
+  if (settings.chromePath.trim()) {
+    ppFile = path.join(dir, `${stem}.puppeteer.json`);
+    await fs.writeFile(
+      ppFile,
+      JSON.stringify({ executablePath: settings.chromePath.trim() }),
+      "utf8",
+    );
+    artifacts.push(ppFile);
+  }
+
+  let out = markdown;
+  for (let i = 0; i < blocks.length; i++) {
+    const { whole, indent, code } = blocks[i];
+    const mmd = path.join(dir, `${stem}-${i + 1}.mmd`);
+    const svg = path.join(dir, `${stem}-${i + 1}.svg`);
+    await fs.writeFile(mmd, code, "utf8");
+    artifacts.push(mmd);
+    const args = ["-i", mmd, "-o", svg, "-c", cfgFile, "-b", "transparent"];
+    if (ppFile) args.push("-p", ppFile);
+    const res = await run(settings.mermaidPath, args, { cwd: dir }).catch(
+      (err: Error) => ({ code: 1, stdout: "", stderr: err.message }),
+    );
+    if (res.code !== 0 || !(await fs.stat(svg).catch(() => null))) {
+      failures.push(res.stderr.trim().split("\n").pop() || "mmdc failed");
+      continue;
+    }
+    artifacts.push(svg);
+    const image = [
+      "```{=typst}",
+      typstFigure(path.basename(svg), await svgAspect(svg)),
+      "```",
+    ]
+      .map((l) => indent + l)
+      .join("\n");
+    out = out.replace(whole, image);
+  }
+  return { markdown: out, artifacts, failures };
+}
+
+/** Width-to-height ratio from an SVG's viewBox, or 1 if it has none. */
+async function svgAspect(svgFile: string): Promise<number> {
+  const head = (await fs.readFile(svgFile, "utf8")).slice(0, 2000);
+  const box = /viewBox="([\d.\-]+)\s+([\d.\-]+)\s+([\d.]+)\s+([\d.]+)"/.exec(
+    head,
+  );
+  if (!box) return 1;
+  const [w, h] = [Number(box[3]), Number(box[4])];
+  return h > 0 ? w / h : 1;
+}
+
+/**
+ * A wide diagram scaled to the text measure ends up with unreadable labels, so
+ * one past 1.9:1 is allowed to pad out into the page margins. Anything squarer
+ * stays inside the measure, where it belongs.
+ */
+function typstFigure(basename: string, aspect: number): string {
+  const img = `image(${typstStringLiteral(basename)}`;
+  return aspect >= 1.9
+    ? `#pad(x: -0.75in, figure(${img}, width: 100% + 1.5in)))`
+    : `#figure(${img}, width: 100%))`;
 }
 
 async function ensureDir(dir: string): Promise<void> {
@@ -233,7 +494,8 @@ export async function compileTyp(
 
 /**
  * Convert a Markdown file to Typst body via pandoc, wrap it in the configured
- * template, compile to PDF. Returns the output path.
+ * template, compile to PDF. Returns the output path plus any mermaid fence
+ * that could not be rendered, so the caller can say so.
  */
 export async function compileMarkdown(
   sourceAbs: string,
@@ -241,7 +503,8 @@ export async function compileMarkdown(
   frontmatter: Record<string, unknown>,
   outPdfAbs: string,
   settings: TypstPluginSettings,
-): Promise<string> {
+  vaultName: string,
+): Promise<{ pdfPath: string; mermaidFailures: string[] }> {
   if (!settings.templatePath)
     throw new CompileError(
       "No template configured. Set a template path in the plugin settings.",
@@ -250,8 +513,15 @@ export async function compileMarkdown(
   const templateFile = await resolveTemplateFile(settings.templatePath);
   await ensureDir(path.dirname(outPdfAbs));
 
-  // Strip YAML frontmatter before handing to pandoc (we map it ourselves).
-  const body = sourceMarkdown.replace(/^---\n[\s\S]*?\n---\n?/, "");
+  // Strip YAML frontmatter before handing to pandoc (we map it ourselves),
+  // then translate the two Obsidian constructs pandoc does not know about:
+  // wiki links become `obsidian://` links, callouts become `#admonition`.
+  let body = sourceMarkdown.replace(/^---\n[\s\S]*?\n---\n?/, "");
+  body = rewriteCallouts(rewriteWikiLinks(body, vaultName));
+  // Mermaid runs before pandoc so the fence is gone by the time pandoc sees
+  // the body; its SVGs and the wrapper are removed together at the end.
+  const mermaid = await renderMermaid(body, sourceAbs, settings);
+  body = mermaid.markdown;
   const pandoc = await run(
     settings.pandocPath,
     ["--from=markdown", "--to=typst", "--wrap=preserve"],
@@ -267,7 +537,11 @@ export async function compileMarkdown(
   );
   const root = commonAncestor([tmpTyp, templateFile]);
   const importPath = rootRelativeImport(root, templateFile);
-  const args = buildTemplateArgs(frontmatter, settings.templateArgs);
+  const args = buildTemplateArgs(
+    frontmatter,
+    settings.templateArgs,
+    settings.defaultAuthor,
+  );
 
   const wrapper = [
     `#import ${typstStringLiteral(importPath)}: *`,
@@ -276,7 +550,7 @@ export async function compileMarkdown(
     `  ${args}`,
     `)`,
     "",
-    pandoc.stdout,
+    styleEnumNumbering(wrapTaskLists(pandoc.stdout)),
   ].join("\n");
 
   await fs.writeFile(tmpTyp, wrapper, "utf8");
@@ -290,8 +564,9 @@ export async function compileMarkdown(
       throw new CompileError(res.stderr.trim() || "typst compile failed.");
   } finally {
     await fs.rm(tmpTyp, { force: true });
+    for (const f of mermaid.artifacts) await fs.rm(f, { force: true });
   }
-  return outPdfAbs;
+  return { pdfPath: outPdfAbs, mermaidFailures: mermaid.failures };
 }
 
 /** Compile a `.typ` file to a temporary PDF and return its bytes (for preview). */

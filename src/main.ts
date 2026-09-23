@@ -103,15 +103,30 @@ export default class TypstPlugin extends Plugin {
     const outPdf = this.outputPathFor(file);
     const notice = new Notice(`Compiling ${file.name}…`, 0);
     try {
+      let mermaidFailures: string[] = [];
       if (file.extension === "typ") {
         await compileTyp(sourceAbs, outPdf, this.settings);
       } else {
         const content = await this.app.vault.read(file);
         const fm = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-        await compileMarkdown(sourceAbs, content, fm, outPdf, this.settings);
+        ({ mermaidFailures } = await compileMarkdown(
+          sourceAbs,
+          content,
+          fm,
+          outPdf,
+          this.settings,
+          this.app.vault.getName(),
+        ));
       }
       notice.hide();
       new Notice(`Saved ${path.basename(outPdf)}`);
+      // A fence that did not render is still in the PDF, as source. Say so
+      // rather than letting a code block pass for a diagram.
+      if (mermaidFailures.length)
+        new Notice(
+          `${mermaidFailures.length} mermaid diagram(s) left as code: ${mermaidFailures[0]}`,
+          10000,
+        );
       if (this.settings.openAfterCompile) this.openExternally(outPdf);
     } catch (err) {
       notice.hide();

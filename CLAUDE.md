@@ -7,16 +7,24 @@ Markdown to PDF through Typst.
 
 1. **The bundle is generated.** `main.js` is built from `src/` by esbuild; never
    hand-edit it. It's gitignored — CI and consumers build it.
-2. **Desktop-only, on purpose.** The plugin shells out to `typst`/`pandoc` via
+2. **Desktop-only, on purpose.** The plugin shells out to `typst`/`pandoc`/`mmdc` via
    Node `child_process`. `manifest.json` sets `isDesktopOnly: true`; keep it so.
    Node APIs (`node:child_process`, `node:fs`, `node:path`, `node:os`) are fine.
 3. **One definition of checks.** The prek hooks are the format/lint/typecheck
    gate; CI runs the same hooks plus the build. Don't add a CI step that differs.
-4. **mise owns the toolchain.** `node`, `pnpm`, `typst`, `pandoc`, `prek` are
-   pinned in `mise.toml`. Don't duplicate versions into hooks or CI.
+4. **mise owns the toolchain.** `node`, `pnpm`, `typst`, `pandoc`,
+   `@mermaid-js/mermaid-cli`, `prek` are pinned in `mise.toml`. Don't duplicate
+   versions into hooks or CI.
 5. **Provenance in the pipeline.** Compilation is explicit and inspectable: for
    Markdown we strip frontmatter, run pandoc, then wrap in the template. Keep the
    generated wrapper `.typ` readable and clean it up after compiling.
+6. **An optional binary degrades, it never fails the export.** `mmdc` renders
+    ```mermaid fences to SVG; a missing or broken one leaves the fence as a code
+    block and reports it in a notice. Mermaid must be configured with
+    `htmlLabels: false` at the *top level* of the config, not only under
+    `flowchart` — otherwise labels land in `<foreignObject>`, which Typst cannot
+    render, and the diagram comes out as empty boxes.
+    ```
 
 ## Layout
 

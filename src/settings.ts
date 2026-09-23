@@ -7,6 +7,18 @@ export interface TypstPluginSettings {
   /** Absolute path to the `pandoc` binary (or just "pandoc" if on PATH). */
   pandocPath: string;
   /**
+   * Absolute path to the `mmdc` binary (mermaid-cli), which renders
+   * ```mermaid fences to SVG. Empty, or a binary that cannot run, leaves
+   * those fences as code blocks rather than failing the export.
+   */
+  mermaidPath: string;
+  /**
+   * Browser executable mermaid-cli renders in. Empty lets puppeteer find its
+   * own, which needs a `puppeteer browsers install` download first; pointing
+   * this at an installed Chrome avoids that.
+   */
+  chromePath: string;
+  /**
    * Path to the Typst template. May be a `.typ` file or a directory that
    * contains a single `.typ` template (e.g. the soilytix-document skill dir).
    * Used only for the Markdown -> Typst -> PDF pipeline; direct `.typ` files
@@ -17,10 +29,15 @@ export interface TypstPluginSettings {
   templateFunction: string;
   /**
    * Extra arguments injected verbatim into `#show: <fn>.with( ... )`, e.g.
-   * `accent: "mint", pattern: "milbe"`. Frontmatter-derived args are merged
+   * `accent: "deep", pattern: "milbe"`. Frontmatter-derived args are merged
    * before these, so these win on conflict.
    */
   templateArgs: string;
+  /**
+   * Author shown in the document header when the note's frontmatter has no
+   * `author:` of its own. Empty = no Author line.
+   */
+  defaultAuthor: string;
   /**
    * Where compiled PDFs are written. Empty = alongside the source file.
    * A relative path is resolved against the vault root.
@@ -35,10 +52,13 @@ export interface TypstPluginSettings {
 export const DEFAULT_SETTINGS: TypstPluginSettings = {
   typstPath: "typst",
   pandocPath: "pandoc",
+  mermaidPath: "mmdc",
+  chromePath: "",
   templatePath:
-    "/Users/mfr/code/soilytix/claude-plugin/skills/soilytix-document",
+    "/Users/mfr/code/soilytix/claude-plugin/general/packages/local/soilytix-document/0.1.0",
   templateFunction: "soilytix-document",
-  templateArgs: 'accent: "mint"',
+  templateArgs: 'accent: "deep"',
+  defaultAuthor: "Maurice Frank, CTO",
   outputDir: "",
   openAfterCompile: true,
   registerTypView: true,
@@ -86,6 +106,36 @@ export class TypstSettingTab extends PluginSettingTab {
           }),
       );
 
+    new Setting(containerEl)
+      .setName("Mermaid CLI binary")
+      .setDesc(
+        "Path to `mmdc`, used to render ```mermaid fences to SVG. Leave empty to keep them as code blocks.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("mmdc")
+          .setValue(this.plugin.settings.mermaidPath)
+          .onChange(async (v) => {
+            this.plugin.settings.mermaidPath = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Browser for Mermaid")
+      .setDesc(
+        "Chrome/Chromium executable mermaid-cli renders in. Empty lets puppeteer use its own downloaded browser.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("(puppeteer's own)")
+          .setValue(this.plugin.settings.chromePath)
+          .onChange(async (v) => {
+            this.plugin.settings.chromePath = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
     containerEl.createEl("h2", { text: "Template" });
 
     new Setting(containerEl)
@@ -121,10 +171,10 @@ export class TypstSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Template arguments")
       .setDesc(
-        'Extra arguments injected into the .with(...) call, e.g. `accent: "mint", pattern: "milbe"`. Frontmatter (title, subtitle, …) is merged automatically.',
+        'Extra arguments injected into the .with(...) call, e.g. `accent: "deep", pattern: "milbe"`. Frontmatter (title, subtitle, …) is merged automatically.',
       )
       .addTextArea((t) => {
-        t.setPlaceholder('accent: "mint"')
+        t.setPlaceholder('accent: "deep"')
           .setValue(this.plugin.settings.templateArgs)
           .onChange(async (v) => {
             this.plugin.settings.templateArgs = v;
@@ -133,6 +183,21 @@ export class TypstSettingTab extends PluginSettingTab {
         t.inputEl.rows = 3;
         t.inputEl.style.width = "100%";
       });
+
+    new Setting(containerEl)
+      .setName("Default author")
+      .setDesc(
+        "Shown in the document header unless the note's frontmatter sets `author:`. Leave empty for no Author line.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("Maurice Frank, CTO")
+          .setValue(this.plugin.settings.defaultAuthor)
+          .onChange(async (v) => {
+            this.plugin.settings.defaultAuthor = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
 
     containerEl.createEl("h2", { text: "Output" });
 

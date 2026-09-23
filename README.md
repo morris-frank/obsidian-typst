@@ -24,15 +24,17 @@
   directory containing one. Defaults to the Soilytix `soilytix-document`
   template.
 
-Desktop only: the plugin shells out to the `typst` and `pandoc` binaries.
+Desktop only: the plugin shells out to the `typst`, `pandoc` and `mmdc` binaries.
 
 ## Requirements
 
 - [Typst CLI](https://github.com/typst/typst) — for compilation.
 - [Pandoc](https://pandoc.org) — only for the Markdown → PDF export.
+- [mermaid-cli](https://github.com/mermaid-js/mermaid-cli) (`mmdc`) — optional,
+  only for ` ```mermaid ` fences. Without it those fences stay code blocks.
 
-Both must be installed and either on your `PATH` or set explicitly in the
-plugin settings.
+They must be installed and either on your `PATH` or set explicitly in the
+plugin settings. `mise run setup` installs all three.
 
 ## How it works
 
@@ -40,6 +42,23 @@ plugin settings.
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.typ` | `typst compile` directly. Imports are resolved with `--root` set to the common ancestor of the file and the configured template, so a note can `#import` the template from anywhere on disk. |
 | `.md`  | strip YAML frontmatter → `pandoc --from markdown --to typst` → wrap in `#import "<template>": *` + `#show: <fn>.with(<args>)` → `typst compile`.                                             |
+
+Four Obsidian constructs pandoc doesn't know about are translated on the way
+through, so they survive into the PDF:
+
+- `[[note]]` / `[[note#heading|alias]]` become clickable `obsidian://open`
+  links back into the vault, instead of literal `\[\[brackets\]\]`.
+- `> [!warning] Title` callouts become `#admonition("warning", title: [Title])`,
+  with the body still rendered as Markdown.
+- `- [ ]` / `- [x]` task lists are wrapped in the template's `#task-list`,
+  which replaces the bullet with a checkbox.
+- ` ```mermaid ` fences are rendered to SVG by `mmdc` and embedded as
+  figures, themed to the Soilytix palette. The SVGs are written beside the note
+  (they have to live under the compile root) and deleted afterwards. A fence
+  that fails to render is left as a code block and reported in a notice, so a
+  broken diagram never fails the export. Diagrams wider than 1.9:1 are allowed
+  to pad out into the page margins; anything wider still is more legible
+  authored as `flowchart TB`.
 
 Frontmatter keys are mapped into the template's `.with(...)` call:
 
@@ -52,15 +71,22 @@ Frontmatter keys are mapped into the template's `.with(...)` call:
 | `date`                 | `meta: (("Date", ...),)`    |
 | `version`              | `meta: (("Version", ...),)` |
 
-Anything in the **Template arguments** setting (e.g. `accent: "mint",
+`author` falls back to the **Default author** setting when the note's
+frontmatter doesn't set one.
+
+Anything in the **Template arguments** setting (e.g. `accent: "deep",
 pattern: "milbe"`) is appended and wins on conflict.
 
 ## Settings
 
 - **Typst binary** / **Pandoc binary** — executable paths (default: on `PATH`).
+- **Mermaid CLI binary** — path to `mmdc`. Empty leaves mermaid fences as code.
+- **Browser for Mermaid** — Chrome/Chromium for mermaid-cli to render in. Empty
+  uses puppeteer's own, which needs a `puppeteer browsers install` download.
 - **Template path** — a `.typ` file or a directory containing one.
 - **Template function** — the show-rule function (default `soilytix-document`).
 - **Template arguments** — extra Typst args injected into `.with(...)`.
+- **Default author** — shown in the header unless frontmatter sets `author:`.
 - **Output directory** — where PDFs go (empty = alongside the source).
 - **Open PDF after compile** — open in the system viewer when done.
 - **Open `.typ` files in the Typst editor** — the split source/preview view.
