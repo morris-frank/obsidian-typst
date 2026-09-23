@@ -1,151 +1,130 @@
-<img src="brand/icon/icon-obsidian-typst-on-obsidian-512.png" align="left" width="128" hspace="16" alt="Typst Studio icon">
+<img src="brand/icon/icon-typst-studio-on-obsidian-512.png" align="left" width="128" hspace="16" alt="typst-studio icon">
 
-<h3>Typst Studio</h3>
+<h3>typst-studio</h3>
 
 <p>
   <sub>TYPST INSIDE YOUR VAULT</sub>
   <br>
-  <strong>Preview and compile <code>.typ</code> files, and export Markdown notes to PDF through a Typst template.</strong>
+  <strong>Edit and preview <code>.typ</code> files in Obsidian, and export Markdown notes to PDF through a Typst template.</strong>
   <br>
   <br>
   <a href="https://obsidian.md"><img src="https://img.shields.io/badge/Obsidian-plugin-8EDE3D?style=flat-square&amp;labelColor=16211B" alt="Obsidian plugin"></a>
   <a href="https://typst.app"><img src="https://img.shields.io/badge/Typst-compile-8EDE3D?style=flat-square&amp;labelColor=16211B" alt="Typst"></a>
   <img src="https://img.shields.io/badge/Markdown%20%E2%86%92%20PDF-pandoc-1AB172?style=flat-square&amp;labelColor=16211B" alt="Markdown to PDF via pandoc">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1AB172?style=flat-square&amp;labelColor=16211B" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/platform-desktop%20only-EE7931?style=flat-square&amp;labelColor=16211B" alt="Desktop only">
 </p>
 
 <br clear="left">
 
-- **View and compile `.typ` files** in a split editor — source on the left, a
-  live PDF preview on the right. Hit _Compile_ (or `Cmd/Ctrl+S`) to render.
-- **Export Markdown notes to PDF through Typst.** A note is converted to Typst
-  (via pandoc), wrapped in a configurable template, and compiled to PDF.
-- **Bring your own template** — point the settings at a `.typ` template file
-  or a directory containing one. Without one, a small bundled template is used.
+A `.typ` file opens in a split editor: source on the left, the compiled PDF on the right,
+re-rendered on _Compile_ or `Cmd/Ctrl+S`. A Markdown note is converted by pandoc, wrapped
+in a Typst template and compiled to PDF, with wiki links, callouts, task lists and mermaid
+diagrams carried across. Without a template of your own, a small bundled one is used.
 
-Desktop only: the plugin shells out to the `typst`, `pandoc` and `mmdc` binaries.
+The plugin shells out to local binaries, which is why it is desktop only:
 
-## Requirements
+| Binary                                              | Needed for                                                        |
+| --------------------------------------------------- | ----------------------------------------------------------------- |
+| [`typst`](https://github.com/typst/typst)           | everything                                                        |
+| [`pandoc`](https://pandoc.org)                      | Markdown → PDF                                                    |
+| [`mmdc`](https://github.com/mermaid-js/mermaid-cli) | ` ```mermaid ` fences; optional, they stay code blocks without it |
 
-- [Typst CLI](https://github.com/typst/typst) — for compilation.
-- [Pandoc](https://pandoc.org) — only for the Markdown → PDF export.
-- [mermaid-cli](https://github.com/mermaid-js/mermaid-cli) (`mmdc`) — optional,
-  only for ` ```mermaid ` fences. Without it those fences stay code blocks.
+Each must be on your `PATH` or set in the plugin settings.
 
-They must be installed and either on your `PATH` or set explicitly in the
-plugin settings. `mise run setup` installs all three.
+## Install
 
-## Installation
+In Obsidian, _Settings → Community plugins → Browse_, search for **Typst Studio** and enable
+it. Or download `main.js`, `manifest.json` and `styles.css` from the
+[latest release](https://github.com/morris-frank/typst-studio/releases/latest) into
+`<vault>/.obsidian/plugins/typst-studio/`.
 
-- **Community plugins:** _Settings → Community plugins → Browse_, search for
-  **Typst Studio**, install and enable.
-- **Manually:** download `main.js`, `manifest.json` and `styles.css` from the
-  [latest release](https://github.com/morris-frank/obsidian-typst/releases/latest)
-  into `<vault>/.obsidian/plugins/typst-studio/`, then enable the plugin.
+## Export
 
-## How it works
+Run **Typst Studio: Export current file to PDF** from the command palette, the ribbon icon,
+or a file's context menu. A `.typ` file is compiled as-is, with `--root` set to the common
+ancestor of the file and the configured template so it can `#import` the template from
+anywhere on disk. A `.md` note goes through:
 
-| Source | Pipeline                                                                                                                                                                                     |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.typ` | `typst compile` directly. Imports are resolved with `--root` set to the common ancestor of the file and the configured template, so a note can `#import` the template from anywhere on disk. |
-| `.md`  | strip YAML frontmatter → `pandoc --from markdown --to typst` → wrap in `#import "<template>": *` + `#show: <fn>.with(<args>)` → `typst compile`.                                             |
+```
+strip frontmatter → pandoc --to typst → #import "<template>": * → #show: <fn>.with(<args>) → typst compile
+```
 
-Four Obsidian constructs pandoc doesn't know about are translated on the way
-through, so they survive into the PDF:
+The wrapper `.typ` and any diagram SVGs are written beside the note (they must sit under the
+compile root) and deleted afterwards. On the way through, four Obsidian constructs are
+translated so they survive into the PDF:
 
-- `[[note]]` / `[[note#heading|alias]]` become clickable `obsidian://open`
-  links back into the vault, instead of literal `\[\[brackets\]\]`.
-- `> [!warning] Title` callouts become `#admonition("warning", title: [Title])`,
-  with the body still rendered as Markdown.
-- `- [ ]` / `- [x]` task lists are wrapped in the template's `#task-list`,
-  which replaces the bullet with a checkbox.
-- ` ```mermaid ` fences are rendered to SVG by `mmdc` and embedded as
-  figures, in mermaid's neutral theme unless the **Mermaid config** setting
-  says otherwise. The SVGs are written beside the note
-  (they have to live under the compile root) and deleted afterwards. A fence
-  that fails to render is left as a code block and reported in a notice, so a
-  broken diagram never fails the export. Diagrams wider than 1.9:1 are allowed
-  to pad out into the page margins; anything wider still is more legible
-  authored as `flowchart TB`.
+| In the note               | In the PDF                                                               |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `[[note#heading\|alias]]` | a clickable `obsidian://open` link back into the vault                   |
+| `> [!warning] Title`      | `#admonition("warning", title: [Title])`, body still Markdown            |
+| `- [ ]` / `- [x]`         | `#task-list[...]`, a checkbox instead of a bullet                        |
+| ` ```mermaid `            | an SVG figure rendered by `mmdc`; wider than 1.9:1 pads into the margins |
 
-Frontmatter keys are mapped into the template's `.with(...)` call:
+A fence that fails to render stays a code block and is reported in a notice; a broken
+diagram never fails the export.
 
-| Frontmatter            | Template argument           |
-| ---------------------- | --------------------------- |
-| `title`                | `title: [...]`              |
-| `subtitle`             | `subtitle: "..."`           |
-| `eyebrow` / `category` | `eyebrow: "..."`            |
-| `author`               | `meta: (("Author", ...),)`  |
-| `date`                 | `meta: (("Date", ...),)`    |
-| `version`              | `meta: (("Version", ...),)` |
+Frontmatter becomes template arguments. The **Template arguments** setting is appended after
+these and wins on conflict:
 
-`author` falls back to the **Default author** setting when the note's
-frontmatter doesn't set one.
-
-Anything in the **Template arguments** setting (e.g. `accent: "deep",
-pattern: "milbe"`) is appended and wins on conflict.
+| Frontmatter                        | Argument                    |
+| ---------------------------------- | --------------------------- |
+| `title`                            | `title: [...]`              |
+| `subtitle`                         | `subtitle: "..."`           |
+| `eyebrow` / `category`             | `eyebrow: "..."`            |
+| `author` (else **Default author**) | `meta: (("Author", ...),)`  |
+| `date`                             | `meta: (("Date", ...),)`    |
+| `version`                          | `meta: (("Version", ...),)` |
 
 ## Settings
 
-- **Typst binary** / **Pandoc binary** — executable paths (default: on `PATH`).
-- **Mermaid CLI binary** — path to `mmdc`. Empty leaves mermaid fences as code.
-- **Mermaid config** — JSON merged over the default mermaid config (theme,
-  `themeVariables`, …). `htmlLabels` is always forced off so Typst can render
-  the labels.
-- **Browser for Mermaid** — Chrome/Chromium for mermaid-cli to render in. Empty
-  uses puppeteer's own, which needs a `puppeteer browsers install` download.
-- **Template path** — a `.typ` file or a directory containing one. Empty uses
-  the bundled template.
-- **Template function** — your template's show-rule function (ignored for the
-  bundled one).
-- **Template arguments** — extra Typst args injected into `.with(...)`.
-- **Default author** — shown in the header unless frontmatter sets `author:`.
-- **Output directory** — where PDFs go (empty = alongside the source).
-- **Open PDF after compile** — open in the system viewer when done.
-- **Open `.typ` files in the Typst editor** — the split source/preview view.
+| Setting                               | Default            |                                                                                  |
+| ------------------------------------- | ------------------ | -------------------------------------------------------------------------------- |
+| Typst / Pandoc binary                 | `typst` / `pandoc` | executable path, or the name on `PATH`                                           |
+| Mermaid CLI binary                    | `mmdc`             | empty leaves mermaid fences as code                                              |
+| Browser for Mermaid                   | —                  | Chrome/Chromium for mmdc; empty uses puppeteer's own download                    |
+| Mermaid config                        | —                  | JSON merged over the neutral theme; `htmlLabels` is always forced off            |
+| Template path                         | —                  | a `.typ` file or a directory holding one; empty uses the bundled template        |
+| Template function                     | —                  | your template's show-rule function; ignored for the bundled one                  |
+| Template arguments                    | —                  | extra Typst args for `.with(...)`                                                |
+| Default author                        | —                  | used when frontmatter has no `author:`                                           |
+| Output directory                      | —                  | empty writes the PDF beside the source; relative paths resolve against the vault |
+| Open PDF after compile                | on                 | opens in the system viewer                                                       |
+| Open `.typ` files in the Typst editor | on                 | the split view; needs a restart                                                  |
 
-## Usage
+## Templates
 
-- Open any `.typ` file → the split editor opens. Edit, then _Compile_.
-- With a `.md` or `.typ` file active, run **Typst: Export current file to PDF**
-  from the command palette, click the ribbon icon, or right-click the file in
-  the explorer.
+The Markdown export emits calls to four names, so a template must define all of them.
+[`src/template.typ`](src/template.typ) is the bundled version:
+
+| Name                                  | Called for                                                       |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| the show-rule function                | the document; takes `title`, `subtitle`, `eyebrow`, `meta`, body |
+| `admonition(kind, title: none, body)` | callouts                                                         |
+| `task-list(body)`                     | task lists                                                       |
+| `styled-enum-numbering(pattern)`      | lettered and roman lists                                         |
 
 ## Development
 
 ```sh
-mise run setup     # install toolchain + deps + git hooks, then verify
-mise run dev       # watch-build main.js
-mise run check     # format-check, lint, typecheck, production build
+mise run setup    # toolchain, deps, git hooks, verify
+mise run dev      # watch-build main.js
+mise run check    # what CI runs: format, lint, typecheck, build
 ```
 
-To test in a real vault, symlink or copy this folder into
-`<vault>/.obsidian/plugins/typst-studio/` (it needs `main.js`,
-`manifest.json`, `styles.css`), then enable the plugin. Create an empty
-`.hotreload` file in the plugin folder and install the
-[Hot-Reload](https://github.com/pjeby/hot-reload) plugin for live rebuilds.
+Symlink this directory to `<vault>/.obsidian/plugins/typst-studio/` and enable the plugin.
+An empty `.hotreload` file plus the [Hot-Reload](https://github.com/pjeby/hot-reload) plugin
+reloads it on every rebuild.
 
-## Custom templates
-
-The Markdown export emits calls to four names, so a template must define all
-of them (see [`src/template.typ`](src/template.typ) for the bundled version):
-
-- the show-rule function, taking `title`, `subtitle`, `eyebrow`, `meta` and the
-  body;
-- `admonition(kind, title: none, body)` for callouts;
-- `task-list(body)` for task lists;
-- `styled-enum-numbering(pattern)` for lettered/roman lists.
-
-## Releasing
+## Release
 
 ```sh
-npm version 0.2.0         # bumps package.json, manifest.json, versions.json
-git push --follow-tags    # the tag triggers the Release workflow
+npm version 0.2.0         # bumps package.json, manifest.json, versions.json; tags without a v
+git push --follow-tags    # the tag builds a draft GitHub release with the plugin files
 ```
 
-The workflow builds and attaches `main.js`, `manifest.json` and `styles.css` to
-a draft GitHub release; publish it from the Releases page.
+Publish the draft from the Releases page once reviewed.
 
 ## License
 
-[MIT](LICENSE) © Maurice Frank
+MIT
