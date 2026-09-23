@@ -8,6 +8,7 @@
   <strong>Edit and preview <code>.typ</code> files in Obsidian, and export Markdown notes to PDF through a Typst template.</strong>
   <br>
   <br>
+  <a href="https://github.com/morris-frank/typst-studio/releases/latest"><img src="https://img.shields.io/github/v/release/morris-frank/typst-studio?style=flat-square&amp;color=8EDE3D&amp;labelColor=16211B" alt="Latest release"></a>
   <a href="https://obsidian.md"><img src="https://img.shields.io/badge/Obsidian-plugin-8EDE3D?style=flat-square&amp;labelColor=16211B" alt="Obsidian plugin"></a>
   <a href="https://typst.app"><img src="https://img.shields.io/badge/Typst-compile-8EDE3D?style=flat-square&amp;labelColor=16211B" alt="Typst"></a>
   <img src="https://img.shields.io/badge/Markdown%20%E2%86%92%20PDF-pandoc-1AB172?style=flat-square&amp;labelColor=16211B" alt="Markdown to PDF via pandoc">
