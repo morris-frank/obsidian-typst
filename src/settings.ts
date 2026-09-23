@@ -19,17 +19,22 @@ export interface TypstPluginSettings {
    */
   chromePath: string;
   /**
+   * JSON merged over the default mermaid config, e.g. a `theme` and
+   * `themeVariables` to match a house style. Empty = mermaid's neutral theme.
+   */
+  mermaidConfig: string;
+  /**
    * Path to the Typst template. May be a `.typ` file or a directory that
-   * contains a single `.typ` template (e.g. the soilytix-document skill dir).
+   * contains a single `.typ` template. Empty uses the bundled template.
    * Used only for the Markdown -> Typst -> PDF pipeline; direct `.typ` files
    * are compiled as-is.
    */
   templatePath: string;
-  /** Name of the template show-rule function to apply, e.g. `soilytix-document`. */
+  /** Name of the template show-rule function to apply, ignored for the bundled template. */
   templateFunction: string;
   /**
    * Extra arguments injected verbatim into `#show: <fn>.with( ... )`, e.g.
-   * `accent: "deep", pattern: "milbe"`. Frontmatter-derived args are merged
+   * `key: "value"`. Frontmatter-derived args are merged
    * before these, so these win on conflict.
    */
   templateArgs: string;
@@ -54,11 +59,11 @@ export const DEFAULT_SETTINGS: TypstPluginSettings = {
   pandocPath: "pandoc",
   mermaidPath: "mmdc",
   chromePath: "",
-  templatePath:
-    "/Users/mfr/code/soilytix/claude-plugin/general/packages/local/soilytix-document/0.1.0",
-  templateFunction: "soilytix-document",
-  templateArgs: 'accent: "deep"',
-  defaultAuthor: "Maurice Frank, CTO",
+  mermaidConfig: "",
+  templatePath: "",
+  templateFunction: "",
+  templateArgs: "",
+  defaultAuthor: "",
   outputDir: "",
   openAfterCompile: true,
   registerTypView: true,
@@ -76,7 +81,7 @@ export class TypstSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Binaries" });
+    new Setting(containerEl).setName("Binaries").setHeading();
 
     new Setting(containerEl)
       .setName("Typst binary")
@@ -136,12 +141,28 @@ export class TypstSettingTab extends PluginSettingTab {
           }),
       );
 
-    containerEl.createEl("h2", { text: "Template" });
+    new Setting(containerEl)
+      .setName("Mermaid config")
+      .setDesc(
+        'JSON merged over the default mermaid config, e.g. `{"theme": "base", "themeVariables": {"primaryColor": "#eef"}}`. Leave empty for the neutral theme.',
+      )
+      .addTextArea((t) => {
+        t.setPlaceholder("{}")
+          .setValue(this.plugin.settings.mermaidConfig)
+          .onChange(async (v) => {
+            this.plugin.settings.mermaidConfig = v;
+            await this.plugin.saveSettings();
+          });
+        t.inputEl.rows = 4;
+        t.inputEl.addClass("typst-settings-textarea");
+      });
+
+    new Setting(containerEl).setName("Template").setHeading();
 
     new Setting(containerEl)
       .setName("Template path")
       .setDesc(
-        "A .typ template file, or a directory containing one. Used when exporting Markdown notes to PDF.",
+        "A .typ template file, or a directory containing one. Used when exporting Markdown notes to PDF. Leave empty for the bundled template.",
       )
       .addText((t) =>
         t
@@ -156,11 +177,11 @@ export class TypstSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Template function")
       .setDesc(
-        "The show-rule function applied via `#show: <fn>.with(...)`. For the Soilytix template this is `soilytix-document`.",
+        "The show-rule function of your template, applied via `#show: <fn>.with(...)`. Ignored for the bundled template.",
       )
       .addText((t) =>
         t
-          .setPlaceholder("soilytix-document")
+          .setPlaceholder("my-template")
           .setValue(this.plugin.settings.templateFunction)
           .onChange(async (v) => {
             this.plugin.settings.templateFunction = v.trim();
@@ -171,17 +192,17 @@ export class TypstSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Template arguments")
       .setDesc(
-        'Extra arguments injected into the .with(...) call, e.g. `accent: "deep", pattern: "milbe"`. Frontmatter (title, subtitle, …) is merged automatically.',
+        "Extra arguments injected into the .with(...) call, for templates that take extra named arguments. Frontmatter (title, subtitle, …) is merged automatically.",
       )
       .addTextArea((t) => {
-        t.setPlaceholder('accent: "deep"')
+        t.setPlaceholder('key: "value"')
           .setValue(this.plugin.settings.templateArgs)
           .onChange(async (v) => {
             this.plugin.settings.templateArgs = v;
             await this.plugin.saveSettings();
           });
         t.inputEl.rows = 3;
-        t.inputEl.style.width = "100%";
+        t.inputEl.addClass("typst-settings-textarea");
       });
 
     new Setting(containerEl)
@@ -191,7 +212,7 @@ export class TypstSettingTab extends PluginSettingTab {
       )
       .addText((t) =>
         t
-          .setPlaceholder("Maurice Frank, CTO")
+          .setPlaceholder("Jane Doe")
           .setValue(this.plugin.settings.defaultAuthor)
           .onChange(async (v) => {
             this.plugin.settings.defaultAuthor = v.trim();
@@ -199,7 +220,7 @@ export class TypstSettingTab extends PluginSettingTab {
           }),
       );
 
-    containerEl.createEl("h2", { text: "Output" });
+    new Setting(containerEl).setName("Output").setHeading();
 
     new Setting(containerEl)
       .setName("Output directory")
