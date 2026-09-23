@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { TypstPluginSettings } from "./settings";
+import BUNDLED_TEMPLATE from "./template.typ";
 
 export class CompileError extends Error {}
 
@@ -75,7 +76,7 @@ export async function resolveTemplateFile(
   await walk(abs, 0);
   if (candidates.length === 0)
     throw new CompileError(`No .typ template found under: ${abs}`);
-  // Prefer one whose basename matches the directory name (e.g. soilytix-document.typ).
+  // Prefer one whose basename matches the directory name (e.g. my-template/my-template.typ).
   const dirName = path.basename(abs);
   return (
     candidates.find((c) => path.basename(c, ".typ") === dirName) ??
@@ -246,39 +247,16 @@ export function wrapTaskLists(typstSource: string): string {
 }
 
 /**
- * Mermaid's own defaults are its brand, not ours, so every diagram is rendered
- * against the design system: Lime-washed nodes with a deep-green border, Gold
- * for the second family, the neutral ramp for structure, Inter throughout.
+ * Default mermaid config: the neutral theme, Typst-safe labels and tight
+ * spacing. The "Mermaid config" setting is merged over it (see mermaidConfig).
  *
  * `htmlLabels: false` is not cosmetic — mermaid otherwise puts every node label
  * in an SVG `<foreignObject>`, which Typst cannot render, and the diagram
  * arrives in the PDF as a set of empty boxes.
  */
-const MERMAID_CONFIG = {
+const MERMAID_CONFIG: Record<string, unknown> = {
   htmlLabels: false,
-  theme: "base",
-  themeVariables: {
-    fontFamily: "Inter",
-    fontSize: "14px",
-    background: "#FFFFFF",
-    mainBkg: "#EDFCDE",
-    primaryColor: "#EDFCDE",
-    primaryBorderColor: "#779E29",
-    primaryTextColor: "#29332E",
-    secondaryColor: "#F4ECE2",
-    secondaryBorderColor: "#B48240",
-    secondaryTextColor: "#29332E",
-    tertiaryColor: "#F5F6F6",
-    tertiaryBorderColor: "#CED0CF",
-    tertiaryTextColor: "#29332E",
-    nodeBorder: "#779E29",
-    lineColor: "#6D7471",
-    textColor: "#29332E",
-    titleColor: "#29332E",
-    clusterBkg: "#F5F6F6",
-    clusterBorder: "#CED0CF",
-    edgeLabelBackground: "#FFFFFF",
-  },
+  theme: "neutral",
   // Tighter spacing is not cosmetic either: it lifts the ratio of label size
   // to total diagram width, which is what decides whether the text is still
   // readable once the SVG is scaled down to the page measure.
@@ -292,6 +270,35 @@ const MERMAID_CONFIG = {
   sequence: { useMaxWidth: true },
   gantt: { useMaxWidth: true },
 };
+
+/**
+ * The default config with the user's JSON merged over it (one level deep, so
+ * `themeVariables` or `flowchart` keys add to the defaults rather than
+ * replacing them). `htmlLabels` is forced off afterwards: it is not a style
+ * choice but what keeps labels renderable by Typst.
+ */
+export function mermaidConfig(userJson: string): Record<string, unknown> {
+  const isObj = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === "object" && !Array.isArray(v);
+  let user: unknown = {};
+  if (userJson.trim()) {
+    try {
+      user = JSON.parse(userJson);
+    } catch (e) {
+      throw new CompileError(
+        `Mermaid config is not valid JSON: ${(e as Error).message}`,
+      );
+    }
+  }
+  const out: Record<string, unknown> = { ...MERMAID_CONFIG };
+  if (isObj(user))
+    for (const [k, v] of Object.entries(user))
+      out[k] = isObj(v) && isObj(out[k]) ? { ...out[k], ...v } : v;
+  out.htmlLabels = false;
+  if (isObj(out.flowchart))
+    out.flowchart = { ...out.flowchart, htmlLabels: false };
+  return out;
+}
 
 const MERMAID_FENCE =
   /^([ \t]*)```+[ \t]*mermaid[ \t]*\n([\s\S]*?)^\1```+[ \t]*$/gm;
@@ -331,7 +338,11 @@ export async function renderMermaid(
   const dir = path.dirname(sourceAbs);
   const stem = `.${path.basename(sourceAbs, path.extname(sourceAbs))}.mermaid`;
   const cfgFile = path.join(dir, `${stem}.config.json`);
-  await fs.writeFile(cfgFile, JSON.stringify(MERMAID_CONFIG), "utf8");
+  await fs.writeFile(
+    cfgFile,
+    JSON.stringify(mermaidConfig(settings.mermaidConfig)),
+    "utf8",
+  );
   artifacts.push(cfgFile);
 
   let ppFile: string | null = null;
@@ -404,7 +415,7 @@ async function ensureDir(dir: string): Promise<void> {
 /**
  * Rewrite bare imports of the configured template to a root-relative absolute
  * path pointing at its real location, so a `.typ` file can `#import
- * "soilytix-document.typ"` from anywhere without the template sitting next to
+ * "my-template.typ"` from anywhere without the template sitting next to
  * it. Only imports whose basename matches the resolved template file are
  * touched; every other import is left alone. The template's own asset paths
  * (logo, patterns) resolve relative to its real location, so they keep working.
@@ -505,13 +516,24 @@ export async function compileMarkdown(
   settings: TypstPluginSettings,
   vaultName: string,
 ): Promise<{ pdfPath: string; mermaidFailures: string[] }> {
-  if (!settings.templatePath)
-    throw new CompileError(
-      "No template configured. Set a template path in the plugin settings.",
-    );
-
-  const templateFile = await resolveTemplateFile(settings.templatePath);
   await ensureDir(path.dirname(outPdfAbs));
+  const stem = `.${path.basename(sourceAbs, path.extname(sourceAbs))}`;
+
+  // No template configured: write the bundled one beside the wrapper (it must
+  // sit under the compile root) and remove it with the wrapper.
+  let bundledTemplate: string | null = null;
+  if (!settings.templatePath) {
+    bundledTemplate = path.join(
+      path.dirname(sourceAbs),
+      `${stem}.typst-template.typ`,
+    );
+    await fs.writeFile(bundledTemplate, BUNDLED_TEMPLATE, "utf8");
+  }
+  const templateFile =
+    bundledTemplate ?? (await resolveTemplateFile(settings.templatePath));
+  const templateFunction = bundledTemplate
+    ? "template"
+    : settings.templateFunction;
 
   // Strip YAML frontmatter before handing to pandoc (we map it ourselves),
   // then translate the two Obsidian constructs pandoc does not know about:
@@ -522,19 +544,22 @@ export async function compileMarkdown(
   // the body; its SVGs and the wrapper are removed together at the end.
   const mermaid = await renderMermaid(body, sourceAbs, settings);
   body = mermaid.markdown;
+  const cleanup = async (): Promise<void> => {
+    if (bundledTemplate) await fs.rm(bundledTemplate, { force: true });
+    for (const f of mermaid.artifacts) await fs.rm(f, { force: true });
+  };
   const pandoc = await run(
     settings.pandocPath,
     ["--from=markdown", "--to=typst", "--wrap=preserve"],
     { input: body, cwd: path.dirname(sourceAbs) },
   );
-  if (pandoc.code !== 0)
+  if (pandoc.code !== 0) {
+    await cleanup();
     throw new CompileError(pandoc.stderr.trim() || "pandoc conversion failed.");
+  }
 
   // The wrapper .typ lives next to the source so relative image paths resolve.
-  const tmpTyp = path.join(
-    path.dirname(sourceAbs),
-    `.${path.basename(sourceAbs, path.extname(sourceAbs))}.typst-export.typ`,
-  );
+  const tmpTyp = path.join(path.dirname(sourceAbs), `${stem}.typst-export.typ`);
   const root = commonAncestor([tmpTyp, templateFile]);
   const importPath = rootRelativeImport(root, templateFile);
   const args = buildTemplateArgs(
@@ -546,7 +571,7 @@ export async function compileMarkdown(
   const wrapper = [
     `#import ${typstStringLiteral(importPath)}: *`,
     "",
-    `#show: ${settings.templateFunction}.with(`,
+    `#show: ${templateFunction}.with(`,
     `  ${args}`,
     `)`,
     "",
@@ -564,7 +589,7 @@ export async function compileMarkdown(
       throw new CompileError(res.stderr.trim() || "typst compile failed.");
   } finally {
     await fs.rm(tmpTyp, { force: true });
-    for (const f of mermaid.artifacts) await fs.rm(f, { force: true });
+    await cleanup();
   }
   return { pdfPath: outPdfAbs, mermaidFailures: mermaid.failures };
 }

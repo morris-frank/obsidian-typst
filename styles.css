@@ -60,3 +60,7 @@
   height: 100%;
   border: none;
 }
+
+.typst-settings-textarea {
+  width: 100%;
+}

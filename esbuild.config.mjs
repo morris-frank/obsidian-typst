@@ -13,6 +13,8 @@ const ctx = await esbuild.context({
   banner: { js: banner },
   entryPoints: ["src/main.ts"],
   bundle: true,
+  // The bundled default template ships inside main.js as a string.
+  loader: { ".typ": "text" },
   // Obsidian ships these; never bundle them.
   external: [
     "obsidian",

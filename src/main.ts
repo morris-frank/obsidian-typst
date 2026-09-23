@@ -22,14 +22,14 @@ export default class TypstPlugin extends Plugin {
       try {
         this.registerExtensions(["typ"], VIEW_TYPE_TYPST);
       } catch (e) {
-        console.warn("obsidian-typst: could not register .typ extension", e);
+        console.warn("typst-studio: could not register .typ extension", e);
       }
     }
 
     this.addSettingTab(new TypstSettingTab(this.app, this));
 
     this.addCommand({
-      id: "typst-export-current-to-pdf",
+      id: "export-current-to-pdf",
       name: "Export current file to PDF",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
@@ -135,7 +135,7 @@ export default class TypstPlugin extends Plugin {
           ? err.message
           : String(err);
       new Notice(`Typst export failed: ${msg}`, 10000);
-      console.error("obsidian-typst export failed", err);
+      console.error("typst-studio: export failed", err);
     }
   }
 
