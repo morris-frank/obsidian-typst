@@ -57,12 +57,12 @@ run = "pnpm run fmt:check"
 run = "pnpm run typecheck"
 
 [tasks.check]
-description = "Everything CI runs: format-check, lint, type-check, build"
+description = "Everything CI runs: prek hooks (format, lint, type-check), build, secret scan, audit"
 run = [
-  "pnpm run fmt:check",
-  "pnpm run lint",
-  "pnpm run typecheck",
+  "prek run --all-files --show-diff-on-failure",
   "pnpm run build",
+  "gitleaks dir . --redact --verbose",
+  "mise run audit",
 ]
 
 [tasks.hooks]
